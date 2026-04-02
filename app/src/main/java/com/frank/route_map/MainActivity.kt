@@ -212,40 +212,191 @@ private data class RouteResult(
 )
 
 private class NominatimClient(private val httpClient: OkHttpClient) {
+    private val stationAliases = listOf(
+        "stazione ferroviaria",
+        "stazione fs",
+        "stazione treni",
+        "stazione",
+        "railway station",
+        "train station"
+    )
+
     fun geocode(query: String): GeoAddress {
-        val url = okhttp3.HttpUrl.Builder()
-            .scheme("https")
-            .host("nominatim.openstreetmap.org")
-            .addPathSegment("search")
-            .addQueryParameter("q", query)
-            .addQueryParameter("format", "jsonv2")
-            .addQueryParameter("limit", "1")
-            .build()
+        val wantsStation = containsStationHint(query)
+        var fallbackItem: JSONObject? = null
 
-        val request = Request.Builder()
-            .url(url)
-            .header("User-Agent", "RouteMapAndroid/1.0")
-            .build()
+        for (attempt in buildQueries(query)) {
+            val url = okhttp3.HttpUrl.Builder()
+                .scheme("https")
+                .host("nominatim.openstreetmap.org")
+                .addPathSegment("search")
+                .addQueryParameter("q", attempt)
+                .addQueryParameter("format", "jsonv2")
+                .addQueryParameter("limit", "5")
+                .addQueryParameter("addressdetails", "1")
+                .addQueryParameter("extratags", "1")
+                .build()
 
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw IOException("Geocoding fallito: ${response.code}")
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "RouteMapAndroid/1.0")
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("Geocoding fallito: ${response.code}")
+                }
+
+                val items = JSONArray(response.body?.string().orEmpty())
+                if (items.length() == 0) {
+                    return@use
+                }
+
+                if (fallbackItem == null) {
+                    fallbackItem = items.getJSONObject(0)
+                }
+
+                val bestItem = selectBestResult(query, attempt, items)
+                if (bestItem == null) {
+                    return@use
+                }
+
+                if (wantsStation && !isStationLike(bestItem)) {
+                    if (fallbackItem == null) {
+                        fallbackItem = bestItem
+                    }
+                    return@use
+                }
+
+                return GeoAddress(
+                    query = query,
+                    label = bestItem.optString("display_name", query),
+                    lat = bestItem.getString("lat").toDouble(),
+                    lon = bestItem.getString("lon").toDouble()
+                )
             }
+        }
 
-            val body = response.body?.string().orEmpty()
-            val items = JSONArray(body)
-            if (items.length() == 0) {
-                throw IllegalArgumentException("Indirizzo non trovato: $query")
-            }
-
-            val item = items.getJSONObject(0)
+        if (fallbackItem != null) {
             return GeoAddress(
                 query = query,
-                label = item.optString("display_name", query),
-                lat = item.getString("lat").toDouble(),
-                lon = item.getString("lon").toDouble()
+                label = fallbackItem!!.optString("display_name", query),
+                lat = fallbackItem!!.getString("lat").toDouble(),
+                lon = fallbackItem!!.getString("lon").toDouble()
             )
         }
+
+        throw IllegalArgumentException("Indirizzo non trovato: $query")
+    }
+
+    private fun buildQueries(original: String): List<String> {
+        val queries = linkedSetOf<String>()
+        val normalized = original.trim().replace(Regex("\\s+"), " ")
+        queries += normalized
+        queries += normalized.replace(",", " ").replace(Regex("\\s+"), " ")
+
+        val parts = normalized.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.size >= 2) {
+            val locationParts = parts.filterNot(::containsStationHint)
+            val stationParts = parts.filter(::containsStationHint)
+            if (locationParts.isNotEmpty() && stationParts.isNotEmpty()) {
+                val location = locationParts.joinToString(" ")
+                queries += "railway station $location"
+                queries += "$location railway station"
+                queries += "train station $location"
+                queries += "$location train station"
+                queries += "stazione di $location"
+            }
+        }
+
+        if (containsStationHint(normalized)) {
+            var location = normalized.lowercase(Locale.ROOT)
+            stationAliases.forEach { alias ->
+                location = location.replace(alias, " ")
+            }
+            location = location.replace(",", " ").replace(Regex("\\s+"), " ").trim()
+            if (location.isNotEmpty()) {
+                queries += "railway station $location"
+                queries += "$location railway station"
+                queries += "train station $location"
+                queries += "$location train station"
+                queries += "stazione di $location"
+            }
+        }
+
+        return queries.filter { it.isNotBlank() }
+    }
+
+    private fun selectBestResult(
+        originalQuery: String,
+        attemptedQuery: String,
+        items: JSONArray
+    ): JSONObject? {
+        var bestItem: JSONObject? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+
+        for (index in 0 until items.length()) {
+            val item = items.getJSONObject(index)
+            val score = scoreResult(originalQuery, attemptedQuery, item)
+            if (score > bestScore) {
+                bestScore = score
+                bestItem = item
+            }
+        }
+
+        return bestItem
+    }
+
+    private fun scoreResult(originalQuery: String, attemptedQuery: String, item: JSONObject): Double {
+        val label = item.optString("display_name", "").lowercase(Locale.ROOT)
+        val type = item.optString("type", "")
+        val importance = item.optDouble("importance", 0.0)
+        val extratags = item.optJSONObject("extratags")
+        val address = item.optJSONObject("address")
+
+        var score = importance * 100.0
+
+        if (type == "station") score += 120.0
+        if (extratags?.optString("public_transport") in listOf("station", "stop_position", "platform")) score += 90.0
+        if (extratags?.optString("train") == "yes") score += 70.0
+        if (!address?.optString("railway").isNullOrBlank()) score += 50.0
+        if ("station" in label || "stazione" in label) score += 20.0
+
+        tokenizeForMatch(originalQuery).forEach { token ->
+            if (token in label) score += 10.0
+        }
+
+        val wantsStation = containsStationHint(originalQuery) || containsStationHint(attemptedQuery)
+        val isStationLike =
+            type == "station" ||
+            extratags?.optString("public_transport") in listOf("station", "stop_position", "platform") ||
+            extratags?.optString("train") == "yes"
+
+        if (wantsStation && !isStationLike) score -= 80.0
+        if (type in listOf("parking", "car_wash", "fuel", "tertiary")) score -= 40.0
+
+        return score
+    }
+
+    private fun isStationLike(item: JSONObject): Boolean {
+        val extratags = item.optJSONObject("extratags")
+        return item.optString("type") in listOf("station", "train_station") ||
+            extratags?.optString("public_transport") in listOf("station", "stop_position", "platform") ||
+            extratags?.optString("train") == "yes"
+    }
+
+    private fun containsStationHint(value: String): Boolean {
+        val lowered = value.lowercase(Locale.ROOT)
+        return stationAliases.any { it in lowered }
+    }
+
+    private fun tokenizeForMatch(value: String): List<String> {
+        return value
+            .lowercase(Locale.ROOT)
+            .replace(",", " ")
+            .replace("-", " ")
+            .split(Regex("\\s+"))
+            .filter { it.length > 2 }
     }
 }
 

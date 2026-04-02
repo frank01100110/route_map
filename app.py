@@ -11,6 +11,14 @@ OSRM_ROUTE_URL = "https://router.project-osrm.org/route/v1/driving"
 HTTP_HEADERS = {
     "User-Agent": "taxi-map-dashboard/1.0 (local development contact: local-app)"
 }
+STATION_ALIASES = (
+    "stazione ferroviaria",
+    "stazione fs",
+    "stazione treni",
+    "stazione",
+    "railway station",
+    "train station",
+)
 
 
 app = Dash(
@@ -206,24 +214,185 @@ def make_stop_row(stop_id: int) -> html.Div:
 
 
 def geocode_address(address: str) -> dict[str, Any]:
-    response = requests.get(
-        NOMINATIM_SEARCH_URL,
-        params={"q": address, "format": "jsonv2", "limit": 1},
-        headers=HTTP_HEADERS,
-        timeout=15,
-    )
-    response.raise_for_status()
-    results = response.json()
-    if not results:
-        raise ValueError(f"Indirizzo non trovato: {address}")
+    wants_station = contains_station_hint(address)
+    last_results: list[dict[str, Any]] = []
+    fallback_match: dict[str, Any] | None = None
+    for query in build_geocode_queries(address):
+        response = requests.get(
+            NOMINATIM_SEARCH_URL,
+            params={
+                "q": query,
+                "format": "jsonv2",
+                "limit": 5,
+                "addressdetails": 1,
+                "extratags": 1,
+            },
+            headers=HTTP_HEADERS,
+            timeout=15,
+        )
+        response.raise_for_status()
+        results = response.json()
+        if not results:
+            continue
 
-    match = results[0]
-    return {
-        "address": address,
-        "label": match.get("display_name", address),
-        "lat": float(match["lat"]),
-        "lon": float(match["lon"]),
-    }
+        last_results = results
+        match = select_best_geocode_result(address, query, results)
+        if not match:
+            continue
+
+        if wants_station and not is_station_like(match):
+            fallback_match = fallback_match or match
+            continue
+
+        if match:
+            return {
+                "address": address,
+                "label": match.get("display_name", address),
+                "lat": float(match["lat"]),
+                "lon": float(match["lon"]),
+            }
+
+    if fallback_match:
+        return {
+            "address": address,
+            "label": fallback_match.get("display_name", address),
+            "lat": float(fallback_match["lat"]),
+            "lon": float(fallback_match["lon"]),
+        }
+
+    if last_results:
+        match = last_results[0]
+        return {
+            "address": address,
+            "label": match.get("display_name", address),
+            "lat": float(match["lat"]),
+            "lon": float(match["lon"]),
+        }
+
+    raise ValueError(f"Indirizzo non trovato: {address}")
+
+
+def build_geocode_queries(address: str) -> list[str]:
+    original = " ".join(address.split())
+    lowered = original.casefold()
+    queries: list[str] = [original]
+
+    compact = original.replace(",", " ")
+    queries.append(" ".join(compact.split()))
+
+    comma_parts = [part.strip() for part in original.split(",") if part.strip()]
+    if len(comma_parts) >= 2:
+        location_parts = [part for part in comma_parts if not contains_station_hint(part)]
+        station_parts = [part for part in comma_parts if contains_station_hint(part)]
+        if location_parts and station_parts:
+            location = " ".join(location_parts)
+            queries.extend(
+                [
+                    f"railway station {location}",
+                    f"{location} railway station",
+                    f"train station {location}",
+                    f"{location} train station",
+                    f"stazione di {location}",
+                ]
+            )
+
+    if contains_station_hint(lowered):
+        location = lowered
+        for alias in STATION_ALIASES:
+            location = location.replace(alias, " ")
+        location = " ".join(location.replace(",", " ").split())
+        if location:
+            queries.extend(
+                [
+                    f"railway station {location}",
+                    f"{location} railway station",
+                    f"train station {location}",
+                    f"{location} train station",
+                    f"stazione di {location}",
+                ]
+            )
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for query in queries:
+        cleaned = " ".join(query.split())
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            deduped.append(cleaned)
+    return deduped
+
+
+def select_best_geocode_result(
+    original_query: str,
+    attempted_query: str,
+    results: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    sorted_results = sorted(
+        results,
+        key=lambda item: geocode_result_score(original_query, attempted_query, item),
+        reverse=True,
+    )
+    return sorted_results[0] if sorted_results else None
+
+
+def geocode_result_score(
+    original_query: str,
+    attempted_query: str,
+    item: dict[str, Any],
+) -> float:
+    original = original_query.casefold()
+    attempted = attempted_query.casefold()
+    label = item.get("display_name", "").casefold()
+    extratags = item.get("extratags") or {}
+    address = item.get("address") or {}
+
+    score = float(item.get("importance") or 0.0) * 100
+
+    if item.get("type") == "station":
+        score += 120
+    if extratags.get("public_transport") in {"station", "stop_position", "platform"}:
+        score += 90
+    if extratags.get("train") == "yes":
+        score += 70
+    if address.get("railway"):
+        score += 50
+    if "station" in label or "stazione" in label:
+        score += 20
+
+    if any(token in label for token in tokenize_for_match(original)):
+        score += 10
+
+    wants_station = contains_station_hint(original) or contains_station_hint(attempted)
+    if wants_station and not (
+        item.get("type") == "station"
+        or extratags.get("public_transport") in {"station", "stop_position", "platform"}
+        or extratags.get("train") == "yes"
+    ):
+        score -= 80
+
+    if item.get("type") in {"parking", "car_wash", "fuel", "tertiary"}:
+        score -= 40
+
+    return score
+
+
+def is_station_like(item: dict[str, Any]) -> bool:
+    extratags = item.get("extratags") or {}
+    return (
+        item.get("type") in {"station", "train_station"}
+        or extratags.get("public_transport") in {"station", "stop_position", "platform"}
+        or extratags.get("train") == "yes"
+    )
+
+
+def contains_station_hint(text: str) -> bool:
+    lowered = text.casefold()
+    return any(alias in lowered for alias in STATION_ALIASES)
+
+
+def tokenize_for_match(text: str) -> list[str]:
+    sanitized = text.replace(",", " ").replace("-", " ")
+    return [token for token in sanitized.split() if len(token) > 2]
 
 
 def fetch_osrm_route(points: list[dict[str, Any]]) -> dict[str, Any]:

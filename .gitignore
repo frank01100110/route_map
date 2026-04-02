@@ -1,0 +1,12 @@
+.DS_Store
+.gradle/
+.idea/
+.kotlin/
+.venv/
+__pycache__/
+local.properties
+*.iml
+captures/
+build/
+app/build/
+dashboard_env/

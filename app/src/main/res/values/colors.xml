@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="sand">#F3EFE6</color>
+    <color name="cream">#FFFAF1</color>
+    <color name="ink">#1F1D1A</color>
+    <color name="muted">#685F55</color>
+    <color name="route_orange">#D86117</color>
+    <color name="route_orange_dark">#A74811</color>
+    <color name="card_stroke">#1A1F1D1A</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

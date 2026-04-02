@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Route Map</string>
+    <string name="eyebrow">Taxi Planner</string>
+    <string name="title_dashboard">Route Map Taxi</string>
+    <string name="intro">Percorsi con tappe multiple, visualizzazione mappa OpenStreetMap e tariffa stimata in base a distanza, durata e supplementi.</string>
+    <string name="origin_hint">Partenza, per esempio Stazione Termini Roma</string>
+    <string name="destination_hint">Destinazione finale, per esempio Aeroporto di Fiumicino</string>
+    <string name="stops_label">Tappe intermedie</string>
+    <string name="add_stop">Aggiungi tappa</string>
+    <string name="remove_stop">Rimuovi</string>
+    <string name="stop_hint">Tappa intermedia</string>
+    <string name="fare_parameters">Parametri tariffa</string>
+    <string name="base_fare_label">Tariffa base</string>
+    <string name="price_per_km_label">Prezzo per km</string>
+    <string name="price_per_minute_label">Prezzo per minuto</string>
+    <string name="extra_fees_label">Supplementi</string>
+    <string name="calculate_route">Calcola percorso e tariffa</string>
+    <string name="summary_title">Riepilogo</string>
+    <string name="total_distance">Distanza totale</string>
+    <string name="total_duration">Durata totale</string>
+    <string name="estimated_fare">Tariffa stimata</string>
+    <string name="default_status">Inserisci i dati e premi il pulsante per vedere il percorso.</string>
+</resources>

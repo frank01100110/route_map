@@ -150,7 +150,6 @@
                         android:id="@+id/fareModePrimary"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:checked="true"
                         android:text="@string/fare_mode_primary" />
 
                     <RadioButton
@@ -165,6 +164,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
+                        android:checked="true"
                         android:text="@string/fare_mode_auto_viareggio" />
                 </RadioGroup>
 

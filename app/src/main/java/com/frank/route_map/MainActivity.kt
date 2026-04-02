@@ -199,6 +199,7 @@ class MainActivity : AppCompatActivity() {
         binding.totalDurationValue.text = String.format(Locale.ITALY, "%.0f min", totalMinutes)
         binding.estimatedFareValue.text = formatCurrency(pricing.totalFare)
         binding.activeFareProfileValue.text = pricing.appliedFareLabel
+        binding.activeFareProfileValue.setTextColor(ContextCompat.getColor(this, pricing.routeColorRes))
         showStatus(pricing.statusMessage(stopCount))
     }
 

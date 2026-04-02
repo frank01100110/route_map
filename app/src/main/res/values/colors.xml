@@ -6,8 +6,8 @@
     <color name="muted">#685F55</color>
     <color name="route_orange">#D86117</color>
     <color name="route_orange_dark">#A74811</color>
-    <color name="route_teal">#0F8B8D</color>
-    <color name="route_teal_dark">#0A5D5E</color>
+    <color name="route_teal">#1565C0</color>
+    <color name="route_teal_dark">#0D47A1</color>
     <color name="card_stroke">#1A1F1D1A</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

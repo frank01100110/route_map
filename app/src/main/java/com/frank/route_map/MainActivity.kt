@@ -144,7 +144,7 @@ class MainActivity : AppCompatActivity() {
                     calculatePricing(route, pricingInputs)
                 }
 
-                renderRoute(points, route.geometry)
+                renderRoute(points, route.geometry, pricing.routeColorRes)
                 renderSummary(route, stops.size, pricing)
             } catch (error: Throwable) {
                 showStatus(error.message ?: "Non sono riuscito a calcolare il percorso.")
@@ -155,7 +155,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderRoute(points: List<GeoAddress>, geometry: List<GeoPoint>) {
+    private fun renderRoute(points: List<GeoAddress>, geometry: List<GeoPoint>, routeColorRes: Int) {
         markers.forEach(map.overlays::remove)
         markers.clear()
         routeLine?.let(map.overlays::remove)
@@ -179,7 +179,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         routeLine = Polyline().apply {
-            outlinePaint.color = ContextCompat.getColor(this@MainActivity, R.color.route_orange)
+            outlinePaint.color = ContextCompat.getColor(this@MainActivity, routeColorRes)
             outlinePaint.strokeWidth = 10f
             setPoints(geometry)
         }
@@ -211,7 +211,8 @@ class MainActivity : AppCompatActivity() {
         return when (pricingInputs.fareMode) {
             FareMode.SECONDARY -> PricingResult(
                 totalFare = secondaryFare.total(totalKm, totalMinutes),
-                appliedFareLabel = "Tariffa 2"
+                appliedFareLabel = "Tariffa 2",
+                routeColorRes = R.color.route_teal
             )
             FareMode.AUTO_VIAREGGIO -> {
                 val exitsViareggio = viareggioBoundaryClient.routeExitsViareggio(route.geometry)
@@ -220,12 +221,14 @@ class MainActivity : AppCompatActivity() {
                     totalFare = appliedFare.total(totalKm, totalMinutes),
                     appliedFareLabel = if (exitsViareggio) "Tariffa 2" else "Tariffa 1",
                     autoViareggio = true,
-                    routeExitsViareggio = exitsViareggio
+                    routeExitsViareggio = exitsViareggio,
+                    routeColorRes = if (exitsViareggio) R.color.route_teal else R.color.route_orange
                 )
             }
             FareMode.PRIMARY -> PricingResult(
                 totalFare = primaryFare.total(totalKm, totalMinutes),
-                appliedFareLabel = "Tariffa 1"
+                appliedFareLabel = "Tariffa 1",
+                routeColorRes = R.color.route_orange
             )
         }
     }
@@ -333,6 +336,7 @@ private data class PricingInputs(
 private data class PricingResult(
     val totalFare: Double,
     val appliedFareLabel: String,
+    val routeColorRes: Int,
     val autoViareggio: Boolean = false,
     val routeExitsViareggio: Boolean = false
 ) {

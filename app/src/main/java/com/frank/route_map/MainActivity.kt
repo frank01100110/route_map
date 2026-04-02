@@ -4,6 +4,7 @@ import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.widget.ArrayAdapter
+import android.widget.CompoundButton
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -48,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private val stopFields = mutableListOf<ItemStopFieldBinding>()
     private val markers = mutableListOf<Marker>()
     private var routeLine: Polyline? = null
+    private var latestKmProgressText: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,6 +87,9 @@ class MainActivity : AppCompatActivity() {
         attachAutocomplete(binding.destinationInput)
         binding.addStopButton.setOnClickListener { addStopField() }
         binding.calculateButton.setOnClickListener { calculateRoute() }
+        binding.showKmProgressCheckbox.setOnCheckedChangeListener { _: CompoundButton, isChecked: Boolean ->
+            refreshKmProgressVisibility(isChecked)
+        }
     }
 
     private fun addStopField(initialValue: String = "") {
@@ -200,6 +205,9 @@ class MainActivity : AppCompatActivity() {
         binding.estimatedFareValue.text = formatCurrency(pricing.totalFare)
         binding.activeFareProfileValue.text = pricing.appliedFareLabel
         binding.activeFareProfileValue.setTextColor(ContextCompat.getColor(this, pricing.routeColorRes))
+        latestKmProgressText = pricing.kmProgressText
+        binding.kmProgressText.text = pricing.kmProgressText
+        refreshKmProgressVisibility(binding.showKmProgressCheckbox.isChecked)
         showStatus(pricing.statusMessage(stopCount))
     }
 
@@ -213,24 +221,76 @@ class MainActivity : AppCompatActivity() {
             FareMode.SECONDARY -> PricingResult(
                 totalFare = secondaryFare.total(totalKm, totalMinutes),
                 appliedFareLabel = "Tariffa 2",
-                routeColorRes = R.color.route_teal
+                routeColorRes = R.color.route_teal,
+                kmProgressText = buildKmProgressText(totalKm, totalMinutes, secondaryFare, "Tariffa 2")
             )
             FareMode.AUTO_VIAREGGIO -> {
                 val exitsViareggio = viareggioBoundaryClient.routeExitsViareggio(route.geometry)
                 val appliedFare = if (exitsViareggio) secondaryFare else primaryFare
+                val appliedLabel = if (exitsViareggio) "Tariffa 2" else "Tariffa 1"
                 PricingResult(
                     totalFare = appliedFare.total(totalKm, totalMinutes),
-                    appliedFareLabel = if (exitsViareggio) "Tariffa 2" else "Tariffa 1",
+                    appliedFareLabel = appliedLabel,
                     autoViareggio = true,
                     routeExitsViareggio = exitsViareggio,
-                    routeColorRes = if (exitsViareggio) R.color.route_teal else R.color.route_orange
+                    routeColorRes = if (exitsViareggio) R.color.route_teal else R.color.route_orange,
+                    kmProgressText = buildKmProgressText(totalKm, totalMinutes, appliedFare, appliedLabel)
                 )
             }
             FareMode.PRIMARY -> PricingResult(
                 totalFare = primaryFare.total(totalKm, totalMinutes),
                 appliedFareLabel = "Tariffa 1",
-                routeColorRes = R.color.route_orange
+                routeColorRes = R.color.route_orange,
+                kmProgressText = buildKmProgressText(totalKm, totalMinutes, primaryFare, "Tariffa 1")
             )
+        }
+    }
+
+    private fun buildKmProgressText(
+        totalKm: Double,
+        totalMinutes: Double,
+        fareParameters: FareParameters,
+        appliedLabel: String
+    ): String {
+        if (totalKm <= 0.0) {
+            return ""
+        }
+
+        val avgMinutesPerKm = if (totalKm > 0.0) totalMinutes / totalKm else 0.0
+        val lines = mutableListOf<String>()
+        lines += "Progressione $appliedLabel"
+        lines += "Base: ${formatCurrency(fareParameters.baseFare)}"
+
+        val fullKm = totalKm.toInt()
+        for (km in 1..fullKm) {
+            val elapsedMinutes = avgMinutesPerKm * km
+            val fareAtKm = fareParameters.total(km.toDouble(), elapsedMinutes)
+            lines += String.format(
+                Locale.ITALY,
+                "%2d km -> %s",
+                km,
+                formatCurrency(fareAtKm)
+            )
+        }
+
+        if (totalKm - fullKm > 0.01) {
+            val finalFare = fareParameters.total(totalKm, totalMinutes)
+            lines += String.format(
+                Locale.ITALY,
+                "%.2f km -> %s",
+                totalKm,
+                formatCurrency(finalFare)
+            )
+        }
+
+        return lines.joinToString(separator = "\n")
+    }
+
+    private fun refreshKmProgressVisibility(enabled: Boolean) {
+        val visible = enabled && latestKmProgressText.isNotBlank()
+        binding.kmProgressContainer.visibility = if (visible) android.view.View.VISIBLE else android.view.View.GONE
+        if (visible) {
+            binding.kmProgressText.text = latestKmProgressText
         }
     }
 
@@ -338,6 +398,7 @@ private data class PricingResult(
     val totalFare: Double,
     val appliedFareLabel: String,
     val routeColorRes: Int,
+    val kmProgressText: String,
     val autoViareggio: Boolean = false,
     val routeExitsViareggio: Boolean = false
 ) {

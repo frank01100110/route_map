@@ -428,6 +428,32 @@
                         android:text="-" />
                 </LinearLayout>
 
+                <CheckBox
+                    android:id="@+id/showKmProgressCheckbox"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="@string/show_km_progress" />
+
+                <HorizontalScrollView
+                    android:id="@+id/kmProgressContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:fillViewport="true"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:id="@+id/kmProgressText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:background="@android:color/white"
+                        android:padding="12dp"
+                        android:textColor="@color/ink"
+                        android:textIsSelectable="true"
+                        android:typeface="monospace" />
+                </HorizontalScrollView>
+
                 <TextView
                     android:id="@+id/statusMessage"
                     android:layout_width="match_parent"

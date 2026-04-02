@@ -31,5 +31,6 @@
     <string name="total_duration">Durata totale</string>
     <string name="estimated_fare">Tariffa stimata</string>
     <string name="active_tariff">Tariffa applicata</string>
+    <string name="show_km_progress">Mostra progressione tariffa km per km</string>
     <string name="default_status">Inserisci i dati e premi il pulsante per vedere il percorso.</string>
 </resources>

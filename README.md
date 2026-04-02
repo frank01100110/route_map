@@ -22,9 +22,11 @@ Applicazione Android per taxi routing con:
 - inserimento partenza
 - aggiunta/rimozione tappe intermedie
 - destinazione finale
+- suggerimenti indirizzi mentre scrivi
 - calcolo distanza e durata
 - disegno del percorso sulla mappa
 - calcolo tariffa taxi
+- tariffa 2 automatica quando il percorso esce dal comune di Viareggio
 
 ## Build
 

@@ -56,7 +56,7 @@
                     android:layout_marginTop="18dp"
                     android:hint="@string/origin_hint">
 
-                    <com.google.android.material.textfield.TextInputEditText
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
                         android:id="@+id/originInput"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -99,7 +99,7 @@
                     android:layout_marginTop="12dp"
                     android:hint="@string/destination_hint">
 
-                    <com.google.android.material.textfield.TextInputEditText
+                    <com.google.android.material.textfield.MaterialAutoCompleteTextView
                         android:id="@+id/destinationInput"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
@@ -129,6 +129,52 @@
                     android:layout_height="wrap_content"
                     android:text="@string/fare_parameters"
                     android:textColor="@color/ink"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:text="@string/fare_mode_label"
+                    android:textColor="@color/ink"
+                    android:textStyle="bold" />
+
+                <RadioGroup
+                    android:id="@+id/fareModeGroup"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:orientation="vertical">
+
+                    <RadioButton
+                        android:id="@+id/fareModePrimary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        android:text="@string/fare_mode_primary" />
+
+                    <RadioButton
+                        android:id="@+id/fareModeSecondary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/fare_mode_secondary" />
+
+                    <RadioButton
+                        android:id="@+id/fareModeAutoViareggio"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="@string/fare_mode_auto_viareggio" />
+                </RadioGroup>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="@string/fare_1_title"
+                    android:textAllCaps="true"
+                    android:textColor="@color/route_orange_dark"
                     android:textStyle="bold" />
 
                 <LinearLayout
@@ -186,6 +232,77 @@
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/extraFeesInput"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal"
+                            android:text="0.00" />
+                    </com.google.android.material.textfield.TextInputLayout>
+                </LinearLayout>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="18dp"
+                    android:text="@string/fare_2_title"
+                    android:textAllCaps="true"
+                    android:textColor="@color/route_orange_dark"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:orientation="vertical">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/base_fare_2_label">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/baseFare2Input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal"
+                            android:text="4.50" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="@string/price_per_km_2_label">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/pricePerKm2Input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal"
+                            android:text="1.35" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="@string/price_per_minute_2_label">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/pricePerMinute2Input"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal"
+                            android:text="0.45" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:hint="@string/extra_fees_2_label">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/extraFees2Input"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:inputType="numberDecimal"
@@ -287,6 +404,25 @@
 
                     <TextView
                         android:id="@+id/estimatedFareValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="-" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/active_tariff" />
+
+                    <TextView
+                        android:id="@+id/activeFareProfileValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="-" />

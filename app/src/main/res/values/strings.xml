@@ -11,14 +11,25 @@
     <string name="remove_stop">Rimuovi</string>
     <string name="stop_hint">Tappa intermedia</string>
     <string name="fare_parameters">Parametri tariffa</string>
+    <string name="fare_mode_label">Modalita tariffa</string>
+    <string name="fare_mode_primary">Tariffa 1</string>
+    <string name="fare_mode_secondary">Tariffa 2</string>
+    <string name="fare_mode_auto_viareggio">Auto: Tariffa 2 fuori Viareggio</string>
+    <string name="fare_1_title">Tariffa 1</string>
     <string name="base_fare_label">Tariffa base</string>
     <string name="price_per_km_label">Prezzo per km</string>
     <string name="price_per_minute_label">Prezzo per minuto</string>
     <string name="extra_fees_label">Supplementi</string>
+    <string name="fare_2_title">Tariffa 2</string>
+    <string name="base_fare_2_label">Tariffa base 2</string>
+    <string name="price_per_km_2_label">Prezzo per km 2</string>
+    <string name="price_per_minute_2_label">Prezzo per minuto 2</string>
+    <string name="extra_fees_2_label">Supplementi 2</string>
     <string name="calculate_route">Calcola percorso e tariffa</string>
     <string name="summary_title">Riepilogo</string>
     <string name="total_distance">Distanza totale</string>
     <string name="total_duration">Durata totale</string>
     <string name="estimated_fare">Tariffa stimata</string>
+    <string name="active_tariff">Tariffa applicata</string>
     <string name="default_status">Inserisci i dati e premi il pulsante per vedere il percorso.</string>
 </resources>

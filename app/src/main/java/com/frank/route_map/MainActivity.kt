@@ -3,14 +3,20 @@ package com.frank.route_map
 import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.LayoutInflater
+import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.frank.route_map.databinding.ActivityMainBinding
 import com.frank.route_map.databinding.ItemStopFieldBinding
 import com.google.android.material.snackbar.Snackbar
+import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -37,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private val httpClient = OkHttpClient.Builder().build()
     private val geocoder = NominatimClient(httpClient)
     private val router = OsrmClient(httpClient)
+    private val viareggioBoundaryClient = ViareggioBoundaryClient(httpClient)
 
     private val stopFields = mutableListOf<ItemStopFieldBinding>()
     private val markers = mutableListOf<Marker>()
@@ -74,13 +81,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupUi() {
+        attachAutocomplete(binding.originInput)
+        attachAutocomplete(binding.destinationInput)
         binding.addStopButton.setOnClickListener { addStopField() }
         binding.calculateButton.setOnClickListener { calculateRoute() }
     }
 
     private fun addStopField(initialValue: String = "") {
         val itemBinding = ItemStopFieldBinding.inflate(LayoutInflater.from(this), binding.stopsContainer, false)
-        itemBinding.stopInput.setText(initialValue)
+        itemBinding.stopInput.setText(initialValue, false)
+        attachAutocomplete(itemBinding.stopInput)
         itemBinding.removeStopButton.setOnClickListener {
             binding.stopsContainer.removeView(itemBinding.root)
             stopFields.remove(itemBinding)
@@ -101,6 +111,21 @@ class MainActivity : AppCompatActivity() {
 
         setLoading(true)
         showStatus("Calcolo percorso in corso...")
+        val pricingInputs = PricingInputs(
+            fareMode = selectedFareMode(),
+            primaryFare = FareParameters(
+                baseFare = binding.baseFareInput.numericValue(),
+                pricePerKm = binding.pricePerKmInput.numericValue(),
+                pricePerMinute = binding.pricePerMinuteInput.numericValue(),
+                extraFees = binding.extraFeesInput.numericValue()
+            ),
+            secondaryFare = FareParameters(
+                baseFare = binding.baseFare2Input.numericValue(),
+                pricePerKm = binding.pricePerKm2Input.numericValue(),
+                pricePerMinute = binding.pricePerMinute2Input.numericValue(),
+                extraFees = binding.extraFees2Input.numericValue()
+            )
+        )
 
         lifecycleScope.launch {
             try {
@@ -115,9 +140,12 @@ class MainActivity : AppCompatActivity() {
                 val route = withContext(Dispatchers.IO) {
                     router.route(points)
                 }
+                val pricing = withContext(Dispatchers.IO) {
+                    calculatePricing(route, pricingInputs)
+                }
 
                 renderRoute(points, route.geometry)
-                renderSummary(route, stops.size)
+                renderSummary(route, stops.size, pricing)
             } catch (error: Throwable) {
                 showStatus(error.message ?: "Non sono riuscito a calcolare il percorso.")
                 Snackbar.make(binding.root, "Errore: ${error.message}", Snackbar.LENGTH_LONG).show()
@@ -163,23 +191,91 @@ class MainActivity : AppCompatActivity() {
         map.invalidate()
     }
 
-    private fun renderSummary(route: RouteResult, stopCount: Int) {
+    private fun renderSummary(route: RouteResult, stopCount: Int, pricing: PricingResult) {
         val totalKm = route.distanceMeters / 1000.0
         val totalMinutes = route.durationSeconds / 60.0
-        val fare = fareValue(totalKm, totalMinutes)
 
         binding.totalDistanceValue.text = String.format(Locale.ITALY, "%.2f km", totalKm)
         binding.totalDurationValue.text = String.format(Locale.ITALY, "%.0f min", totalMinutes)
-        binding.estimatedFareValue.text = formatCurrency(fare)
-        showStatus("Percorso aggiornato con $stopCount tappe intermedie.")
+        binding.estimatedFareValue.text = formatCurrency(pricing.totalFare)
+        binding.activeFareProfileValue.text = pricing.appliedFareLabel
+        showStatus(pricing.statusMessage(stopCount))
     }
 
-    private fun fareValue(totalKm: Double, totalMinutes: Double): Double {
-        val baseFare = binding.baseFareInput.numericValue()
-        val pricePerKm = binding.pricePerKmInput.numericValue()
-        val pricePerMinute = binding.pricePerMinuteInput.numericValue()
-        val extraFees = binding.extraFeesInput.numericValue()
-        return baseFare + totalKm * pricePerKm + totalMinutes * pricePerMinute + extraFees
+    private fun calculatePricing(route: RouteResult, pricingInputs: PricingInputs): PricingResult {
+        val totalKm = route.distanceMeters / 1000.0
+        val totalMinutes = route.durationSeconds / 60.0
+        val primaryFare = pricingInputs.primaryFare
+        val secondaryFare = pricingInputs.secondaryFare
+
+        return when (pricingInputs.fareMode) {
+            FareMode.SECONDARY -> PricingResult(
+                totalFare = secondaryFare.total(totalKm, totalMinutes),
+                appliedFareLabel = "Tariffa 2"
+            )
+            FareMode.AUTO_VIAREGGIO -> {
+                val exitsViareggio = viareggioBoundaryClient.routeExitsViareggio(route.geometry)
+                val appliedFare = if (exitsViareggio) secondaryFare else primaryFare
+                PricingResult(
+                    totalFare = appliedFare.total(totalKm, totalMinutes),
+                    appliedFareLabel = if (exitsViareggio) "Tariffa 2" else "Tariffa 1",
+                    autoViareggio = true,
+                    routeExitsViareggio = exitsViareggio
+                )
+            }
+            FareMode.PRIMARY -> PricingResult(
+                totalFare = primaryFare.total(totalKm, totalMinutes),
+                appliedFareLabel = "Tariffa 1"
+            )
+        }
+    }
+
+    private fun selectedFareMode(): FareMode {
+        return when (binding.fareModeGroup.checkedRadioButtonId) {
+            R.id.fareModeSecondary -> FareMode.SECONDARY
+            R.id.fareModeAutoViareggio -> FareMode.AUTO_VIAREGGIO
+            else -> FareMode.PRIMARY
+        }
+    }
+
+    private fun attachAutocomplete(input: MaterialAutoCompleteTextView) {
+        val adapter = ArrayAdapter<String>(
+            this,
+            android.R.layout.simple_dropdown_item_1line,
+            mutableListOf()
+        )
+        input.setAdapter(adapter)
+        input.threshold = 3
+
+        var suggestionJob: Job? = null
+        input.doAfterTextChanged { editable ->
+            val query = editable?.toString()?.trim().orEmpty()
+            suggestionJob?.cancel()
+            if (query.length < 3) {
+                adapter.clear()
+                return@doAfterTextChanged
+            }
+
+            suggestionJob = lifecycleScope.launch {
+                delay(250)
+                val suggestions = try {
+                    withContext(Dispatchers.IO) { geocoder.suggest(query) }
+                } catch (_: Throwable) {
+                    emptyList()
+                }
+
+                if (!input.isAttachedToWindow) {
+                    return@launch
+                }
+
+                adapter.clear()
+                adapter.addAll(suggestions)
+                adapter.notifyDataSetChanged()
+                if (suggestions.isNotEmpty() && input.hasFocus()) {
+                    input.showDropDown()
+                }
+            }
+        }
     }
 
     private fun EditText.numericValue(): Double = text.toString().trim().toDoubleOrNull() ?: 0.0
@@ -210,6 +306,48 @@ private data class RouteResult(
     val durationSeconds: Double,
     val geometry: List<GeoPoint>
 )
+
+private enum class FareMode {
+    PRIMARY,
+    SECONDARY,
+    AUTO_VIAREGGIO
+}
+
+private data class FareParameters(
+    val baseFare: Double,
+    val pricePerKm: Double,
+    val pricePerMinute: Double,
+    val extraFees: Double
+) {
+    fun total(totalKm: Double, totalMinutes: Double): Double {
+        return baseFare + totalKm * pricePerKm + totalMinutes * pricePerMinute + extraFees
+    }
+}
+
+private data class PricingInputs(
+    val fareMode: FareMode,
+    val primaryFare: FareParameters,
+    val secondaryFare: FareParameters
+)
+
+private data class PricingResult(
+    val totalFare: Double,
+    val appliedFareLabel: String,
+    val autoViareggio: Boolean = false,
+    val routeExitsViareggio: Boolean = false
+) {
+    fun statusMessage(stopCount: Int): String {
+        return if (autoViareggio) {
+            if (routeExitsViareggio) {
+                "Tariffa 2 applicata automaticamente: il percorso esce da Viareggio. Tappe intermedie: $stopCount."
+            } else {
+                "Tariffa 1 applicata: il percorso resta nei confini di Viareggio. Tappe intermedie: $stopCount."
+            }
+        } else {
+            "Percorso aggiornato con $stopCount tappe intermedie. Applicata $appliedFareLabel."
+        }
+    }
+}
 
 private class NominatimClient(private val httpClient: OkHttpClient) {
     private val stationAliases = listOf(
@@ -287,6 +425,53 @@ private class NominatimClient(private val httpClient: OkHttpClient) {
         }
 
         throw IllegalArgumentException("Indirizzo non trovato: $query")
+    }
+
+    fun suggest(query: String): List<String> {
+        val scoredSuggestions = linkedMapOf<String, Double>()
+
+        for (attempt in buildQueries(query)) {
+            val url = okhttp3.HttpUrl.Builder()
+                .scheme("https")
+                .host("nominatim.openstreetmap.org")
+                .addPathSegment("search")
+                .addQueryParameter("q", attempt)
+                .addQueryParameter("format", "jsonv2")
+                .addQueryParameter("limit", "5")
+                .addQueryParameter("addressdetails", "1")
+                .addQueryParameter("extratags", "1")
+                .build()
+
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "RouteMapAndroid/1.0")
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw IOException("Suggerimenti falliti: ${response.code}")
+                }
+
+                val items = JSONArray(response.body?.string().orEmpty())
+                for (index in 0 until items.length()) {
+                    val item = items.getJSONObject(index)
+                    val label = item.optString("display_name").trim()
+                    if (label.isBlank()) {
+                        continue
+                    }
+                    val score = scoreResult(query, attempt, item)
+                    val previous = scoredSuggestions[label]
+                    if (previous == null || score > previous) {
+                        scoredSuggestions[label] = score
+                    }
+                }
+            }
+        }
+
+        return scoredSuggestions.entries
+            .sortedByDescending { it.value }
+            .take(5)
+            .map { it.key }
     }
 
     private fun buildQueries(original: String): List<String> {
@@ -445,5 +630,124 @@ private class OsrmClient(private val httpClient: OkHttpClient) {
             points += GeoPoint(item.getDouble(1), item.getDouble(0))
         }
         return points
+    }
+}
+
+private class ViareggioBoundaryClient(private val httpClient: OkHttpClient) {
+    private var cachedPolygons: List<List<Pair<Double, Double>>>? = null
+
+    fun routeExitsViareggio(routeGeometry: List<GeoPoint>): Boolean {
+        if (routeGeometry.isEmpty()) {
+            return false
+        }
+        val polygons = boundaryPolygons()
+        return routeGeometry.any { point ->
+            !isInsideAnyPolygon(point.latitude, point.longitude, polygons)
+        }
+    }
+
+    private fun boundaryPolygons(): List<List<Pair<Double, Double>>> {
+        cachedPolygons?.let { return it }
+
+        val url = okhttp3.HttpUrl.Builder()
+            .scheme("https")
+            .host("nominatim.openstreetmap.org")
+            .addPathSegment("search")
+            .addQueryParameter("q", "Viareggio, Lucca, Toscana, Italia")
+            .addQueryParameter("format", "jsonv2")
+            .addQueryParameter("limit", "1")
+            .addQueryParameter("polygon_geojson", "1")
+            .build()
+
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", "RouteMapAndroid/1.0")
+            .build()
+
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw IOException("Recupero confini Viareggio fallito: ${response.code}")
+            }
+
+            val payload = JSONArray(response.body?.string().orEmpty())
+            if (payload.length() == 0) {
+                throw IllegalStateException("Non sono riuscito a recuperare i confini di Viareggio.")
+            }
+
+            val geojson = payload.getJSONObject(0).optJSONObject("geojson")
+                ?: throw IllegalStateException("I confini di Viareggio non sono disponibili.")
+            val polygons = extractPolygons(geojson)
+            if (polygons.isEmpty()) {
+                throw IllegalStateException("I confini di Viareggio non sono disponibili.")
+            }
+            cachedPolygons = polygons
+            return polygons
+        }
+    }
+
+    private fun extractPolygons(geojson: JSONObject): List<List<Pair<Double, Double>>> {
+        val type = geojson.optString("type")
+        val coordinates = geojson.optJSONArray("coordinates") ?: JSONArray()
+        val polygons = mutableListOf<List<Pair<Double, Double>>>()
+
+        if (type == "Polygon") {
+            if (coordinates.length() > 0) {
+                polygons += ringToPairs(coordinates.getJSONArray(0))
+            }
+        } else if (type == "MultiPolygon") {
+            for (index in 0 until coordinates.length()) {
+                val polygon = coordinates.getJSONArray(index)
+                if (polygon.length() > 0) {
+                    polygons += ringToPairs(polygon.getJSONArray(0))
+                }
+            }
+        }
+
+        return polygons
+    }
+
+    private fun ringToPairs(ring: JSONArray): List<Pair<Double, Double>> {
+        val points = mutableListOf<Pair<Double, Double>>()
+        for (index in 0 until ring.length()) {
+            val coordinate = ring.getJSONArray(index)
+            points += coordinate.getDouble(0) to coordinate.getDouble(1)
+        }
+        return points
+    }
+
+    private fun isInsideAnyPolygon(
+        lat: Double,
+        lon: Double,
+        polygons: List<List<Pair<Double, Double>>>
+    ): Boolean {
+        return polygons.any { polygon -> isInsidePolygon(lat, lon, polygon) }
+    }
+
+    private fun isInsidePolygon(
+        lat: Double,
+        lon: Double,
+        polygon: List<Pair<Double, Double>>
+    ): Boolean {
+        if (polygon.size < 3) {
+            return false
+        }
+
+        var inside = false
+        var previous = polygon.last()
+        for (current in polygon) {
+            val currentLon = current.first
+            val currentLat = current.second
+            val previousLon = previous.first
+            val previousLat = previous.second
+
+            val intersects = ((currentLat > lat) != (previousLat > lat)) &&
+                (lon < (previousLon - currentLon) * (lat - currentLat) / ((previousLat - currentLat).takeIf { it != 0.0 } ?: 1e-12) + currentLon)
+            if (intersects) {
+                inside = !inside
+            }
+            previous = current
+        }
+
+        return inside
     }
 }
